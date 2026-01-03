@@ -962,6 +962,44 @@ a:hover {
 .footer-links a:hover {
   opacity: 1;
 }
+/* Footer Social Icons */
+.footer-socials {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+/*.footer-socials a {
+  color: var(--footer-text);
+  font-size: 20px;
+  opacity: 0.7;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+}
+
+.footer-socials a:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+}*/
+
+.footer-socials a,
+.footer-socials a:link,
+.footer-socials a:visited,
+.footer-socials a:hover,
+.footer-socials a:active {
+  color: var(--footer-text);
+  font-size: 20px;
+  opacity: 0.7;
+  text-decoration: none;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+}
+
+.footer-socials a:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+
+
 
 .footer-bottom {
   text-align: center;
@@ -1299,6 +1337,7 @@ section {
     }
 }
 
+
 #scrollTopBtn {
   position: fixed;
   bottom: 32px;
@@ -1354,3 +1393,4 @@ body.dark #scrollTopBtn:hover {
   color: #000;
   border-color: #fff;
 }
+
