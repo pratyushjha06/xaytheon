@@ -1,5 +1,20 @@
+<<<<<<< HEAD
 // Ensure global namespace exists immediately
 window.XAYTHEON_AUTH = window.XAYTHEON_AUTH || {};
+=======
+/**
+ * Centralized Authentication & Session Recovery Module
+ *
+ * Features:
+ * - Automatic access token refresh
+ * - Single-flight refresh lock (prevents multiple refresh calls)
+ * - Request retry after refresh
+ * - Graceful session expiry handling
+ * - Secure token cleanup
+ *
+ * All authentication logic is intentionally centralized here.
+ */
+>>>>>>> ff49e0e (implement secure token refresh and automatic session recovery)
 
 (function () {
   const API_BASE_URL =
@@ -46,27 +61,25 @@ try {
   let currentUser = null;
   let tokenExpiryTime = null;
   let refreshTimer = null;
+<<<<<<< HEAD
   let lastAuthError = null;
 
   function isTokenExpired() {
   if (!tokenExpiryTime) return true;
   return Date.now() >= tokenExpiryTime;
 }
+=======
+  let refreshPromise = null;
+>>>>>>> ff49e0e (implement secure token refresh and automatic session recovery)
 
 
   function setAccessToken(token, expiresIn, user) {
-  accessToken = token;
-  currentUser = user || null;
-
-  // Store expiry timestamp (in ms)
-  tokenExpiryTime = Date.now() + (expiresIn * 1000);
-
-  scheduleTokenRefresh();
-
-  window.dispatchEvent(
-    new CustomEvent("xaytheon:authchange", { detail: { user: currentUser } })
-  );
-}
+    accessToken = token;
+    if (user) currentUser = user;
+    tokenExpiryTime = Date.now() + (expiresIn - 60) * 1000;
+    scheduleTokenRefresh();
+    window.dispatchEvent(new CustomEvent('xaytheon:authchange', { detail: { user: currentUser } }));
+  }
 
     window.dispatchEvent(
       new CustomEvent("xaytheon:authchange", {
@@ -114,16 +127,30 @@ try {
   function getAccessToken() {
     return accessToken;
   }
-  async function refreshAccessToken() {
+
+  function isTokenExpiringSoon() {
+    if (!tokenExpiryTime) return true;
+    return Date.now() >= tokenExpiryTime;
+  }
+async function refreshAccessToken() {
+  // 🚦 If refresh already running, wait for it
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
     try {
       const storedRefreshToken = localStorage.getItem("x_refresh_token");
 
       const res = await fetchWithTimeout(`${API_BASE_URL}/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+<<<<<<< HEAD
         body: JSON.stringify({ refreshToken }),
       });
         headers: { "Content-Type": "application/json" }
+=======
+>>>>>>> ff49e0e (implement secure token refresh and automatic session recovery)
       };
 
       if (storedRefreshToken) {
@@ -134,9 +161,12 @@ try {
 
       const res = await fetchWithTimeout(`${API_BASE_URL}/refresh`, options);
 
-      if (!res.ok) throw { code: "SESSION_EXPIRED" };
+      if (!res.ok) {
+        throw new Error("Refresh token invalid or expired");
+      }
 
       const data = await res.json();
+
       setAccessToken(data.accessToken, data.expiresIn, data.user);
 
       if (data.refreshToken) {
@@ -147,20 +177,21 @@ try {
     } catch {
       clearAccessToken();
     } catch (err) {
-  console.warn("Session restore failed:", err);
+      console.warn("Token refresh failed:", err);
+      clearAccessToken();
+      renderAuthArea();
+      applyAuthGating();
+      return false;
+    } finally {
+      // 🔓 Release lock
+      refreshPromise = null;
+    }
+  })();
 
-  // Clear all auth data (logout user safely)
-  clearAccessToken();
-
-  // Notify UI that user is logged out
- /* window.dispatchEvent(
-    new CustomEvent("xaytheon:authchange", { detail: { user: null } })
-  );*/
-
-  return false;
+  return refreshPromise;
 }
 
-
+ 
   function scheduleTokenRefresh() {
     if (refreshTimer) clearTimeout(refreshTimer);
     if (!tokenExpiryTime) return;
@@ -169,14 +200,12 @@ try {
   }
 
   async function authenticatedFetch(url, options = {}) {
-     if (isTokenExpired()) {
-    const refreshed = await refreshAccessToken();
-    if (!refreshed) {
-      clearAccessToken();
-      throw { code: "SESSION_EXPIRED" };
+    if (isTokenExpiringSoon()) {
+      const refreshed = await refreshAccessToken();
+      if (!refreshed) {
+        throw new Error("Authentication required");
+      }
     }
-  }
-
 
     const res = await fetchWithTimeout(url, {
       ...options,
@@ -186,8 +215,32 @@ try {
       },
     });
 
+<<<<<<< HEAD
     if (res.status === 401) throw { code: "UNAUTHORIZED" };
     return res;
+=======
+    if (response.status === 401 && !isTokenExpiringSoon()) {
+  const data = await response.json();
+  if (data.expired) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      headers.Authorization = `Bearer ${getAccessToken()}`;
+      return fetchWithTimeout(url, {
+        ...options,
+        headers,
+        credentials: "include",
+      });
+    }
+  }
+}
+
+
+    return response;
+  }
+
+  function isAuthenticated() {
+    return accessToken !== null;
+>>>>>>> ff49e0e (implement secure token refresh and automatic session recovery)
   }
 
   async function login(email, password) {
@@ -211,7 +264,13 @@ try {
         }
 
         // Handle specific HTTP status codes
-        
+        if (res.status === 429) {
+          throw new Error('Too many login attempts. Please wait before trying again.');
+        } else if (res.status === 401) {
+          throw new Error('Invalid email or password');
+        } else if (res.status >= 500) {
+          throw new Error('Server error. Please try again later.');
+        }
 
         throw new Error(errorMessage);
       }
