@@ -11,12 +11,16 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="analytics.css" />
   <link rel="stylesheet" href="features_analytics.css" />
+  <link rel="stylesheet" href="modal-fix.css?v=1" />
   <script src="theme.js"></script>
 
   <!-- Chart.js for data visualization -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- Socket.io Client -->
   <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <!-- jsPDF & html2canvas for PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <!-- Supabase SDK & auth bootstrap -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.44.4/dist/umd/supabase.min.js"></script>
@@ -348,6 +352,16 @@
               <line x1="16" y1="17" x2="8" y2="17"></line>
             </svg>
             Export as CSV
+          </button>
+          <button class="btn btn-primary export-option" data-format="pdf">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M16 13H8"></path>
+              <path d="M16 17H8"></path>
+              <path d="M10 9H8"></path>
+            </svg>
+            Export as PDF
           </button>
         </div>
       </div>
