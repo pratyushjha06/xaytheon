@@ -1,9 +1,19 @@
 const jwt = require("jsonwebtoken");
+const User = require("../models/user.model");
 
-exports.verifyAccessToken = (req, res, next) => {
+/**
+ * ================================
+ * VERIFY ACCESS TOKEN (RBAC READY)
+ * ================================
+ * - Verifies JWT
+ * - Ensures token type is "access"
+ * - Fetches user role from DB
+ * - Attaches req.user = { id, role }
+ */
+exports.verifyAccessToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ message: "Access token required" });
     }
@@ -20,20 +30,37 @@ exports.verifyAccessToken = (req, res, next) => {
       return res.status(401).json({ message: "Invalid token type" });
     }
 
-    req.userId = decoded.id;
+    // FETCH USER TO GET ROLE (REQUIRED FOR RBAC)
+    const user = await User.findById(decoded.id).select("role");
+
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    //THIS IS WHAT RBAC NEEDS
+    req.user = {
+      id: user._id,
+      role: user.role
+    };
+
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
-      return res.status(401).json({ 
+      return res.status(401).json({
         message: "Access token expired",
-        expired: true 
+        expired: true
       });
     }
-    
+
     return res.status(401).json({ message: "Invalid access token" });
   }
 };
 
+/**
+ * ================================
+ * LOGIN RATE LIMITER
+ * ================================
+ */
 exports.loginRateLimiter = (() => {
   const attempts = new Map();
   const MAX_ATTEMPTS = 5;
@@ -42,7 +69,7 @@ exports.loginRateLimiter = (() => {
   return (req, res, next) => {
     const identifier = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    
+
     if (!attempts.has(identifier)) {
       attempts.set(identifier, []);
     }
@@ -51,9 +78,11 @@ exports.loginRateLimiter = (() => {
     const recentAttempts = userAttempts.filter(time => now - time < WINDOW_MS);
 
     if (recentAttempts.length >= MAX_ATTEMPTS) {
-      return res.status(429).json({ 
+      return res.status(429).json({
         message: "Too many login attempts. Please try again later.",
-        retryAfter: Math.ceil((WINDOW_MS - (now - recentAttempts[0])) / 1000)
+        retryAfter: Math.ceil(
+          (WINDOW_MS - (now - recentAttempts[0])) / 1000
+        )
       });
     }
 
@@ -63,15 +92,20 @@ exports.loginRateLimiter = (() => {
   };
 })();
 
+/**
+ * ================================
+ * GENERAL RATE LIMITER
+ * ================================
+ */
 exports.generalRateLimiter = (() => {
   const requests = new Map();
-  const MAX_REQUESTS = 100; // requests per window
+  const MAX_REQUESTS = 100;
   const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
   return (req, res, next) => {
     const identifier = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    
+
     if (!requests.has(identifier)) {
       requests.set(identifier, []);
     }
@@ -80,9 +114,11 @@ exports.generalRateLimiter = (() => {
     const recentRequests = userRequests.filter(time => now - time < WINDOW_MS);
 
     if (recentRequests.length >= MAX_REQUESTS) {
-      return res.status(429).json({ 
+      return res.status(429).json({
         message: "Too many requests. Please try again later.",
-        retryAfter: Math.ceil((WINDOW_MS - (now - recentRequests[0])) / 1000)
+        retryAfter: Math.ceil(
+          (WINDOW_MS - (now - recentRequests[0])) / 1000
+        )
       });
     }
 
@@ -91,3 +127,4 @@ exports.generalRateLimiter = (() => {
     next();
   };
 })();
+
