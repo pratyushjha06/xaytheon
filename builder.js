@@ -1,6 +1,7 @@
 /**
  * Workflow Builder Logic
  */
+
 const elements = {
     canvas: document.getElementById('workflow-canvas'),
     placeholder: document.getElementById('canvas-placeholder'),
@@ -214,112 +215,131 @@ const elements = {
 
     /* -------------------- YAML Preview -------------------- */
 
-    async function updateYamlPreview() {
-        const workflowData = {
-            name: workflowNameInput.value,
-            on: triggerSelect.value,
-            jobs: {
-                build: {
-                    runsOn: 'ubuntu-latest',
-                    steps: workflowSteps.map(({ name, uses, run }) =>
-                        uses ? { name, uses } : { name, run }
-                    )
-                }
-            }
-        };
+    function updatePreviewAndValidation() {
+        // Update UI validation state + export button
+        const { valid, errors } = validateCurrentWorkflow(workflowSteps, {
+            name: elements.workflowName.value.trim(),
+            trigger: elements.triggerSelect.value,
+        });
 
+        elements.exportBtn.disabled = !valid;
+
+        if (valid) {
+            elements.validationPill.className = 'pill status-pill valid';
+            elements.validationPill.textContent = 'Valid';
+        } else {
+            elements.validationPill.className = 'pill status-pill invalid';
+            elements.validationPill.textContent = `Invalid (${errors?.length || '?'})`;
+        }
+
+        // Update preview
         try {
-            const res = await fetch('/api/workflow/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workflowData })
+            const yaml = getWorkflowYaml(workflowSteps, {
+                name: elements.workflowName.value.trim(),
+                trigger: elements.triggerSelect.value,
             });
-
-            const data = await res.json();
-            yamlPreview.textContent = data.yaml;
-
-            if (data.validation === 'Workflow is valid.') {
-                validationPill.className = 'pill valid';
-                validationPill.textContent = 'Valid';
-                validationPill.title = '';
-            } else {
-                validationPill.className = 'pill error';
-                validationPill.textContent = 'Warning';
-                validationPill.title = data.validation;
-            }
+            elements.yamlPreview.textContent = yaml;
         } catch (err) {
-            console.error('Preview error:', err);
+            elements.yamlPreview.textContent = `# Error generating preview!\n# ${err.message}`;
+        }
+
+        if (typeof triggerUIUpdate === 'function') {
+            triggerUIUpdate();
         }
     }
 
-    /* -------------------- Modal Logic -------------------- */
-
-    window.builder = {
-        remove: removeStep,
-        openEdit: (id) => {
-            editingStepId = id;
-            const step = workflowSteps.find(s => s.id === id);
-            if (!step) return;
-
-            document.getElementById('edit-step-name').value = step.name;
-
-            const usesField = document.getElementById('uses-field');
-            const runField = document.getElementById('run-field');
-
-            if (step.uses) {
-                usesField.style.display = 'block';
-                runField.style.display = 'none';
-                document.getElementById('edit-step-uses').value = step.uses;
-            } else {
-                usesField.style.display = 'none';
-                runField.style.display = 'block';
-                document.getElementById('edit-step-run').value = step.run;
-            }
-
-            editModal.classList.remove('hidden');
-        }
-    };
-
-    saveEditBtn.addEventListener('click', () => {
-        const idx = workflowSteps.findIndex(s => s.id === editingStepId);
-        if (idx === -1) return;
-
-        workflowSteps[idx].name = document.getElementById('edit-step-name').value;
-
-        if (workflowSteps[idx].uses) {
-            workflowSteps[idx].uses = document.getElementById('edit-step-uses').value;
-        } else {
-            workflowSteps[idx].run = document.getElementById('edit-step-run').value;
-        }
-
-        editModal.classList.add('hidden');
-        renderCanvas();
-        debouncedYamlUpdate();
-    });
-
-    cancelEditBtn.addEventListener('click', () => {
-        editModal.classList.add('hidden');
-    });
-
     /* -------------------- Actions -------------------- */
 
-    exportBtn.addEventListener('click', () => {
-        const blob = new Blob([yamlPreview.textContent], { type: 'text/yaml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = workflowNameInput.value || 'main.yml';
-        a.click();
-        URL.revokeObjectURL(url);
+    function initEventListeners() {
+        // Canvas actions (edit/delete)
+        elements.canvas.addEventListener('click', e => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+
+            const stepBlock = btn.closest('.step-block');
+            if (!stepBlock) return;
+
+            const stepId = stepBlock.dataset.stepId;
+
+            if (btn.classList.contains('edit')) {
+                openEditModal(stepId);
+            } else if (btn.classList.contains('delete')) {
+                if (confirm('Remove this step?')) {
+                    removeStep(stepId);
+                }
+            }
+        });
+        // Search filter
+        const searchInput = document.getElementById('step-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', e => {
+                const q = e.target.value.toLowerCase().trim();
+                document.querySelectorAll('.draggable-step').forEach(el => {
+                    const name = (el.dataset.name || '').toLowerCase();
+                    el.style.display = name.includes(q) ? '' : 'none';
+                });
+            });
+        }
+        // Modal Logic
+        elements.saveEditBtn.addEventListener('click', () => {
+            const updates = {
+                name: elements.editName.value.trim(),
+            };
+
+            if (workflowSteps.find(s => s.id === editingStepId)?.uses) {
+                updates.uses = elements.editUses.value.trim();
+            } else {
+                updates.run = elements.editRun.value.trim();
+            }
+
+            updateStep(editingStepId, updates);
+            closeEditModal();
+        });
+        elements.cancelEditBtn.addEventListener('click', closeEditModal);
+        elements.editModal.addEventListener('click', e => {
+            if (e.target === elements.editModal) closeEditModal();
+        });
+        // Trigger preview updates
+        elements.workflowName.addEventListener('input', updatePreviewAndValidation);
+        elements.triggerSelect.addEventListener('change', updatePreviewAndValidation);
+        // Export (already has validation guard in HTML + disabled state)
+        elements.exportBtn.addEventListener('click', () => {
+            const yaml = getWorkflowYaml(workflowSteps, {
+                name: elements.workflowName.value.trim() || 'workflow',
+                trigger: elements.triggerSelect.value,
+            });
+
+            const filename = (elements.workflowName.value.trim() || 'workflow')
+                .replace(/\.ya?ml$/i, '') + '.yml';
+            const blob = new Blob([yaml], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+        elements.copyBtn.addEventListener('click', () => {
+            const text = elements.yamlPreview.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                elements.copyBtn.innerHTML = '<i class="ri-check-line"></i>';
+                setTimeout(() => {
+                    elements.copyBtn.innerHTML = '<i class="ri-file-copy-line"></i>';
+                }, 1800);
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeDraggableSteps();
+        setupCanvasDropZone();
+        initEventListeners();
+        // First render
+        renderSteps();
+        updatePreviewAndValidation();
     });
 
-    copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(yamlPreview.textContent);
-        copyBtn.innerHTML = '<i class="ri-check-line"></i>';
-        setTimeout(() => {
-            copyBtn.innerHTML = '<i class="ri-file-copy-line"></i>';
-        }, 2000);
-    });
-
-    workflowNameInput.addEventListener('change', debouncedYamlUpdate);
-    triggerSelect.addEventListener('change', debouncedYamlUpdate);
+    export function refreshWorkflowUI() {
+        renderSteps();
+        updatePreviewAndValidation();
+    }
